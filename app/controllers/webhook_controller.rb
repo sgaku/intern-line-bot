@@ -35,7 +35,7 @@ class WebhookController < ApplicationController
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
             book =  fetchData
-            message = flex(book.title,book.large_image_url,book.item_url,book.review_average)
+            message = flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)
           else
             message = {
               type: 'text',
@@ -53,7 +53,7 @@ class WebhookController < ApplicationController
     head :ok
   end
 
-  def flex(title,image,url,review_average)
+  def flex(title,image,url,review_average,item_caption)
     {
       type: 'flex',
       altText: '本のリスト',
@@ -81,6 +81,13 @@ class WebhookController < ApplicationController
               layout:'baseline',
               margin:'md',
               contents: rate(review_average)
+            },
+            {
+              type:'text',
+              text:item_caption,
+              wrap: true,
+              size: 'sm',
+              flex:2,
             } 
           ]
         },

@@ -1,4 +1,5 @@
 require 'line/bot'
+require 'active_support/all'
 
 class WebhookController < ApplicationController
   protect_from_forgery except: [:callback] # CSRF対策無効化
@@ -15,8 +16,17 @@ class WebhookController < ApplicationController
   end
 
   def fetchData
-    books = RakutenWebService::Books::Book.search(booksGenreId:@@gerne_list[rand(5)],sort:"reviewAverage")
-    return books.first
+    books = []
+    response = RakutenWebService::Books::Book.search(booksGenreId:@@gerne_list[rand(5)],sort:"reviewAverage")
+    # 表示したいパラメータがないものを省く
+      response.each do |item|
+        if item.title.present? && item.item_caption.present? && item.large_image_url.present? && item.review_average.present?
+          books << item
+        end
+      end
+
+    show_items = books.first(10)
+    return show_items[rand(10)]
   end 
 
   def callback
@@ -35,7 +45,7 @@ class WebhookController < ApplicationController
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
             book =  fetchData
-            message = flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)
+            message = flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
           else
             message = {
               type: 'text',
@@ -87,7 +97,6 @@ class WebhookController < ApplicationController
               text:item_caption,
               wrap: true,
               size: 'sm',
-              flex:2,
             } 
           ]
         },

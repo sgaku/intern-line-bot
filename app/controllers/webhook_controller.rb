@@ -35,7 +35,7 @@ class WebhookController < ApplicationController
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
             book =  fetchData
-            message = flex(book.title,book.large_image_url,book.item_url)
+            message = flex(book.title,book.large_image_url,book.item_url,book.review_average)
           else
             message = {
               type: 'text',
@@ -53,7 +53,7 @@ class WebhookController < ApplicationController
     head :ok
   end
 
-  def flex(title,image,url)
+  def flex(title,image,url,review_average)
     {
       type: 'flex',
       altText: '本のリスト',
@@ -75,7 +75,13 @@ class WebhookController < ApplicationController
               text: title,
               wrap: true,
               size: 'sm',
-            },  
+            }, 
+            {
+              type:'box',
+              layout:'baseline',
+              margin:'md',
+              contents: rate(review_average)
+            } 
           ]
         },
         footer:{
@@ -94,5 +100,34 @@ class WebhookController < ApplicationController
         },
       }
     }
+  end
+
+  def rate(review_average)
+    rate  = review_average.to_i
+    rates = []
+
+    5.times do |i|
+    url =  if rate > i
+        "https://scdn.line-apps.com/n/channel_devcenter/img/fx/review_gold_star_28.png"
+      else
+        "https://scdn.line-apps.com/n/channel_devcenter/img/fx/review_gray_star_28.png"
+      end
+
+    rates << {
+            "type": "icon",
+            "size": "sm",
+            "url": url
+          }
+    end
+      
+    rates << {
+          "type": "text",
+          "text": rate.to_s,
+          "size": "sm",
+          "color": "#999999",
+          "margin": "md",
+          "flex": 0
+        }
+    return rates
   end
 end

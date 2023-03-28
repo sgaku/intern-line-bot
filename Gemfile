@@ -35,7 +35,6 @@ gem 'dotenv-rails'
 
 gem 'config'
 gem 'rakuten_web_service'
-gem 'activesupport', '~> 4.2', '>= 4.2.11'
 
 gem 'line-bot-api'
 gem 'sinatra'

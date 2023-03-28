@@ -57,13 +57,13 @@ class WebhookController < ApplicationController
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
-          if event['message']['text'].include?("本") then 
+          if event['message']['text'].include?("小説") then 
             # ジャンルリストからジャンルのフレックスメッセージ表示
               message = build_genre_list_flex(@@genre_list.children)    
           else
             message = {
               type: 'text',
-              text: '本読みません？'
+              text: '小説読まない？'
             }
           end 
           client.reply_message(event['replyToken'], message)
@@ -91,7 +91,7 @@ class WebhookController < ApplicationController
               {
                 type: 'text',
                 size: 'lg',
-                text: "好きなジャンルを選んでください"
+                text: "好きなジャンルを選んでね"
               }
             ]
           },

@@ -6,6 +6,13 @@ class WebhookController < ApplicationController
   GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
  GENRE_ID_LIST.freeze
   
+
+ def initialize
+  
+  response = RakutenWebService::Books::Genre.search(booksGenreId:"001004")
+  @@genre_list = response.first
+logger.debug"genre_list:#{@@genre_list}"
+ end
   def client
     @client ||= Line::Bot::Client.new { |config|
       config.channel_secret = ENV["LINE_CHANNEL_SECRET"]
@@ -13,9 +20,9 @@ class WebhookController < ApplicationController
     }
   end
 
-  def fetchData
+  def fetchData(genre_id)
     books = []
-    response = RakutenWebService::Books::Book.search(booksGenreId:GENRE_ID_LIST.sample,sort:"reviewAverage")
+    response = RakutenWebService::Books::Book.search(booksGenreId:genre_id,sort:"reviewAverage")
     # 表示したいパラメータがないものを省く
       response.each do |item|
         if item.title.present? && item.item_caption.present? && item.large_image_url.present? && item.review_average.present?
@@ -38,12 +45,23 @@ class WebhookController < ApplicationController
     events = client.parse_events_from(body)
     events.each { |event|
       case event
+      when Line::Bot::Event::Postback
+        postback_data = URI.decode_www_form(event['postback']['data']).to_h
+        book =  fetchData(postback_data['genreId'])
+        message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)    
+        # message = build_postback_book_list(postback_data)
+     
+        
+        client.reply_message(event['replyToken'], message)
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
-            book =  fetchData
-            message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
+           @@genre_list.children.map {|child| puts child}
+            message = build_genre_list_flex(@@genre_list.children)
+            # logger.debug"message:#{message}"
+            # book =  fetchData
+            # message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
           else
             message = {
               type: 'text',
@@ -60,6 +78,63 @@ class WebhookController < ApplicationController
     }
     head :ok
   end
+
+  def build_postback_book_list(data)
+  end
+
+  def build_genre_list_flex(children)
+    {
+      type: 'flex',
+      altText: 'ジャンルリスト',
+      contents: {
+        type: 'bubble',
+        header: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'text',
+                size: 'lg',
+                text: "好きなジャンルを選んでください"
+              }
+            ]
+          },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents:children.map {|child| genre_button(child)}
+        },
+      }
+    }
+  end
+
+
+  def genre_button(genre)
+      {
+        type:'box',
+        layout:'horizontal',
+        contents:[
+          {
+            type:'text',
+            text:genre['booksGenreName'],
+            gravity:'center',
+            size:'sm',
+            align: 'start'
+          },
+          {
+            type:'button',
+           height:'sm',
+           action:{
+            type:'postback',
+            label:'調べる',
+            displayText:genre['booksGenreName'],
+            data:"type=genre_search&genreId=#{genre['booksGenreId']}"
+           }
+          }, 
+        ]
+      }
+  end
+
 
   def build_random_book_flex(title,image,url,review_average,item_caption)
     {

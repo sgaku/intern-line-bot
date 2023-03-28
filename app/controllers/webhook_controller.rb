@@ -3,11 +3,8 @@ require 'active_support/all'
 
 class WebhookController < ApplicationController
   protect_from_forgery except: [:callback] # CSRF対策無効化
-
-  def initialize
-    GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
-    GENRE_ID_LIST.freeze
-  end
+  GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
+ GENRE_ID_LIST.freeze
   
   def client
     @client ||= Line::Bot::Client.new { |config|

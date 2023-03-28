@@ -31,6 +31,9 @@ gem 'spring',        group: :development
 # gem 'bcrypt', '~> 3.1.7'
 
 gem 'puma'
+gem 'dotenv-rails'
+
+gem 'config'
 
 gem 'line-bot-api'
 gem 'sinatra'

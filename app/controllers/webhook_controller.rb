@@ -40,12 +40,14 @@ class WebhookController < ApplicationController
     events = client.parse_events_from(body)
     events.each { |event|
       case event
+      when Line::Bot::Event::Postback
+
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
             book =  fetchData
-            message = flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
+            message = random_book(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
           else
             message = {
               type: 'text',
@@ -63,7 +65,42 @@ class WebhookController < ApplicationController
     head :ok
   end
 
-  def flex(title,image,url,review_average,item_caption)
+
+  def show_genre_list
+    {
+      type: 'flex',
+      altText: '本のリスト',
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: [
+            {
+              type: 'text',
+              text: ,
+              wrap: true,
+              size: 'sm',
+            }, 
+            {
+              type:'box',
+              layout:'baseline',
+              margin:'md',
+              contents: rate(review_average)
+            },
+            {
+              type:'text',
+              text:item_caption,
+              wrap: true,
+              size: 'sm',
+            } 
+          ]
+        },
+      }
+    }
+  end
+
+  def random_book(title,image,url,review_average,item_caption)
     {
       type: 'flex',
       altText: '本のリスト',

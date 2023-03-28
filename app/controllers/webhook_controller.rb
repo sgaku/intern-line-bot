@@ -3,9 +3,14 @@ require 'active_support/all'
 
 class WebhookController < ApplicationController
   protect_from_forgery except: [:callback] # CSRF対策無効化
-  GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
- GENRE_ID_LIST.freeze
   
+
+  def initialize
+    # 小説の中のジャンルを取得(001004)
+    response = RakutenWebService::Books::Genre.search(booksGenreId:"001004")
+    @@genre_list = response.first
+  end
+
   def client
     @client ||= Line::Bot::Client.new { |config|
       config.channel_secret = ENV["LINE_CHANNEL_SECRET"]
@@ -13,9 +18,11 @@ class WebhookController < ApplicationController
     }
   end
 
-  def fetchData
+  # 楽天APIを呼んで本のデータを取得する
+  def fetch_books_data(genre_id)
     books = []
-    response = RakutenWebService::Books::Book.search(booksGenreId:GENRE_ID_LIST.sample,sort:"reviewAverage")
+    # ジャンルid、高レート順に指定
+    response = RakutenWebService::Books::Book.search(booksGenreId:genre_id,sort:"reviewAverage")
     # 表示したいパラメータがないものを省く
       response.each do |item|
         if item.title.present? && item.item_caption.present? && item.large_image_url.present? && item.review_average.present?
@@ -23,8 +30,8 @@ class WebhookController < ApplicationController
         end
       end
 
-    show_items = books.first(10)
-    return show_items[rand(10)]
+      # 30個のレスポンスからランダムで10個返す
+    return books.sample(10)
   end 
 
   def callback
@@ -38,16 +45,25 @@ class WebhookController < ApplicationController
     events = client.parse_events_from(body)
     events.each { |event|
       case event
+      when Line::Bot::Event::Postback
+        # hashに変換
+        postback_data = URI.decode_www_form(event['postback']['data']).to_h
+        # ポストバックのジャンルidから検索をかける
+        books =  fetch_books_data(postback_data['genreId'])
+        #フレックスメッセージのデータを取得
+        message = build_flex_book_list(books)    
+       
+        client.reply_message(event['replyToken'], message)
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
-            book =  fetchData
-            message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
+            # ジャンルリストからジャンルのフレックスメッセージ表示
+              message = build_genre_list_flex(@@genre_list.children)    
           else
             message = {
               type: 'text',
-              text: '本読みません？'
+              text: '本読まない？'
             }
           end 
           client.reply_message(event['replyToken'], message)
@@ -61,15 +77,79 @@ class WebhookController < ApplicationController
     head :ok
   end
 
-  def build_random_book_flex(title,image,url,review_average,item_caption)
+# ジャンルリストのフレックスメッセージ
+  def build_genre_list_flex(children)
     {
       type: 'flex',
-      altText: '本のリスト',
+      altText: 'ジャンルリスト',
       contents: {
+        type: 'bubble',
+        header: {
+            type: 'box',
+            layout: 'vertical',
+            contents: [
+              {
+                type: 'text',
+                size: 'lg',
+                text: "好きなジャンルを選んでね"
+              }
+            ]
+          },
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents:children.map {|child| genre_button(child)}
+        },
+      }
+    }
+  end
+
+# ジャンルリストのボタン
+  def genre_button(genre)
+      {
+        type:'box',
+        layout:'horizontal',
+        contents:[
+          {
+            type:'text',
+            text:genre['booksGenreName'],
+            gravity:'center',
+            size:'sm',
+            align: 'start'
+          },
+          {
+            type:'button',
+           height:'sm',
+           action:{
+            type:'postback',
+            label:'調べる',
+            displayText:genre['booksGenreName'],
+            data:"type=genre_search&genreId=#{genre['booksGenreId']}"
+           }
+          }, 
+        ]
+      }
+  end
+
+  # カルーセルを返す
+  def build_flex_book_list(books)
+    {
+      type: 'flex',
+      altText: 'カルーセル',
+      contents: {
+        type: 'carousel',
+        contents: books.map {|book| book_list_item(book)}
+      }  
+    } 
+  end
+
+  # カルーセル内のアイテム
+  def book_list_item(book)
+     {
         type: 'bubble',
         hero:{
           type:'image',
-          url:image,
+          url:book['largeImageUrl'],
           size:'3xl',
           aspectRatio:'2:3',
           aspectMode:'cover',
@@ -80,7 +160,7 @@ class WebhookController < ApplicationController
           contents: [
             {
               type: 'text',
-              text: title,
+              text: book['title'],
               wrap: true,
               size: 'sm',
             }, 
@@ -88,11 +168,11 @@ class WebhookController < ApplicationController
               type:'box',
               layout:'baseline',
               margin:'md',
-              contents: rate(review_average)
+              contents: rate(book['reviewAverage'])
             },
             {
               type:'text',
-              text:item_caption,
+              text:book['itemCaption'],
               wrap: true,
               size: 'sm',
             } 
@@ -108,18 +188,19 @@ class WebhookController < ApplicationController
             action:{
               type:'uri',
               label:"購入する",
-              uri:url,
+              uri:book['itemUrl'],
             }
           ]
         },
       }
-    }
   end
 
+  # 評価レートの判定
   def rate(review_average)
     rate  = review_average.to_i
     rates = []
 
+    # 5段階評価
     5.times do |i|
     url =  if rate > i
         Settings.gold_star
@@ -133,7 +214,7 @@ class WebhookController < ApplicationController
             "url": url
           }
     end
-      
+    # 評価数表示
     rates << {
           "type": "text",
           "text": rate.to_s,

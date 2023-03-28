@@ -3,16 +3,14 @@ require 'active_support/all'
 
 class WebhookController < ApplicationController
   protect_from_forgery except: [:callback] # CSRF対策無効化
-  GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
- GENRE_ID_LIST.freeze
   
 
- def initialize
-  
-  response = RakutenWebService::Books::Genre.search(booksGenreId:"001004")
-  @@genre_list = response.first
-logger.debug"genre_list:#{@@genre_list}"
- end
+  def initialize
+    # 小説の中のジャンルを取得(001004)
+    response = RakutenWebService::Books::Genre.search(booksGenreId:"001004")
+    @@genre_list = response.first
+  end
+
   def client
     @client ||= Line::Bot::Client.new { |config|
       config.channel_secret = ENV["LINE_CHANNEL_SECRET"]
@@ -20,8 +18,10 @@ logger.debug"genre_list:#{@@genre_list}"
     }
   end
 
-  def fetchData(genre_id)
+  # 楽天APIを呼んで本のデータを取得する
+  def fetch_books_data(genre_id)
     books = []
+    # ジャンルid、高レート順に指定
     response = RakutenWebService::Books::Book.search(booksGenreId:genre_id,sort:"reviewAverage")
     # 表示したいパラメータがないものを省く
       response.each do |item|
@@ -30,8 +30,8 @@ logger.debug"genre_list:#{@@genre_list}"
         end
       end
 
-    show_items = books.first(10)
-    return show_items[rand(10)]
+      # 30個のレスポンスからランダムで10個返す
+    return books.sample(10)
   end 
 
   def callback
@@ -46,22 +46,20 @@ logger.debug"genre_list:#{@@genre_list}"
     events.each { |event|
       case event
       when Line::Bot::Event::Postback
+        # hashに変換
         postback_data = URI.decode_www_form(event['postback']['data']).to_h
-        book =  fetchData(postback_data['genreId'])
-        message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)    
-        # message = build_postback_book_list(postback_data)
-     
-        
+        # ポストバックのジャンルidから検索をかける
+        books =  fetch_books_data(postback_data['genreId'])
+        #フレックスメッセージのデータを取得
+        message = build_flex_book_list(books)    
+       
         client.reply_message(event['replyToken'], message)
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
-           @@genre_list.children.map {|child| puts child}
-            message = build_genre_list_flex(@@genre_list.children)
-            # logger.debug"message:#{message}"
-            # book =  fetchData
-            # message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
+            # ジャンルリストからジャンルのフレックスメッセージ表示
+              message = build_genre_list_flex(@@genre_list.children)    
           else
             message = {
               type: 'text',
@@ -79,9 +77,7 @@ logger.debug"genre_list:#{@@genre_list}"
     head :ok
   end
 
-  def build_postback_book_list(data)
-  end
-
+# ジャンルリストのフレックスメッセージ
   def build_genre_list_flex(children)
     {
       type: 'flex',
@@ -108,7 +104,7 @@ logger.debug"genre_list:#{@@genre_list}"
     }
   end
 
-
+# ジャンルリストのボタン
   def genre_button(genre)
       {
         type:'box',
@@ -135,16 +131,25 @@ logger.debug"genre_list:#{@@genre_list}"
       }
   end
 
-
-  def build_random_book_flex(title,image,url,review_average,item_caption)
+  # カルーセルを返す
+  def build_flex_book_list(books)
     {
       type: 'flex',
-      altText: '本のリスト',
+      altText: 'カルーセル',
       contents: {
+        type: 'carousel',
+        contents: books.map {|book| book_list_item(book)}
+      }  
+    } 
+  end
+
+  # カルーセル内のアイテム
+  def book_list_item(book)
+     {
         type: 'bubble',
         hero:{
           type:'image',
-          url:image,
+          url:book['largeImageUrl'],
           size:'3xl',
           aspectRatio:'2:3',
           aspectMode:'cover',
@@ -155,7 +160,7 @@ logger.debug"genre_list:#{@@genre_list}"
           contents: [
             {
               type: 'text',
-              text: title,
+              text: book['title'],
               wrap: true,
               size: 'sm',
             }, 
@@ -163,11 +168,11 @@ logger.debug"genre_list:#{@@genre_list}"
               type:'box',
               layout:'baseline',
               margin:'md',
-              contents: rate(review_average)
+              contents: rate(book['reviewAverage'])
             },
             {
               type:'text',
-              text:item_caption,
+              text:book['itemCaption'],
               wrap: true,
               size: 'sm',
             } 
@@ -183,18 +188,19 @@ logger.debug"genre_list:#{@@genre_list}"
             action:{
               type:'uri',
               label:"購入する",
-              uri:url,
+              uri:book['itemUrl'],
             }
           ]
         },
       }
-    }
   end
 
+  # 評価レートの判定
   def rate(review_average)
     rate  = review_average.to_i
     rates = []
 
+    # 5段階評価
     5.times do |i|
     url =  if rate > i
         Settings.gold_star
@@ -208,7 +214,7 @@ logger.debug"genre_list:#{@@genre_list}"
             "url": url
           }
     end
-      
+    # 評価数表示
     rates << {
           "type": "text",
           "text": rate.to_s,

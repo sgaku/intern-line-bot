@@ -34,6 +34,7 @@ gem 'puma'
 gem 'dotenv-rails'
 
 gem 'config'
+gem 'rakuten_web_service'
 
 gem 'line-bot-api'
 gem 'sinatra'

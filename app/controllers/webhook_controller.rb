@@ -5,7 +5,8 @@ class WebhookController < ApplicationController
   protect_from_forgery except: [:callback] # CSRF対策無効化
 
   def initialize
-    @@gerne_list = ["001004001","001004002","001004008","001004004","001004016"];
+    GENRE_ID_LIST = ["001004001","001004002","001004008","001004004","001004016"];
+    GENRE_ID_LIST.freeze
   end
   
   def client
@@ -17,7 +18,7 @@ class WebhookController < ApplicationController
 
   def fetchData
     books = []
-    response = RakutenWebService::Books::Book.search(booksGenreId:@@gerne_list[rand(5)],sort:"reviewAverage")
+    response = RakutenWebService::Books::Book.search(booksGenreId:GENRE_ID_LIST.sample,sort:"reviewAverage")
     # 表示したいパラメータがないものを省く
       response.each do |item|
         if item.title.present? && item.item_caption.present? && item.large_image_url.present? && item.review_average.present?
@@ -40,14 +41,12 @@ class WebhookController < ApplicationController
     events = client.parse_events_from(body)
     events.each { |event|
       case event
-      when Line::Bot::Event::Postback
-
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           if event['message']['text'].include?("本") then 
             book =  fetchData
-            message = random_book(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
+            message = build_random_book_flex(book.title,book.large_image_url,book.item_url,book.review_average,book.item_caption)       
           else
             message = {
               type: 'text',
@@ -65,42 +64,7 @@ class WebhookController < ApplicationController
     head :ok
   end
 
-
-  def show_genre_list
-    {
-      type: 'flex',
-      altText: '本のリスト',
-      contents: {
-        type: 'bubble',
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          contents: [
-            {
-              type: 'text',
-              text: ,
-              wrap: true,
-              size: 'sm',
-            }, 
-            {
-              type:'box',
-              layout:'baseline',
-              margin:'md',
-              contents: rate(review_average)
-            },
-            {
-              type:'text',
-              text:item_caption,
-              wrap: true,
-              size: 'sm',
-            } 
-          ]
-        },
-      }
-    }
-  end
-
-  def random_book(title,image,url,review_average,item_caption)
+  def build_random_book_flex(title,image,url,review_average,item_caption)
     {
       type: 'flex',
       altText: '本のリスト',
@@ -161,9 +125,9 @@ class WebhookController < ApplicationController
 
     5.times do |i|
     url =  if rate > i
-        "https://scdn.line-apps.com/n/channel_devcenter/img/fx/review_gold_star_28.png"
+        Settings.gold_star
       else
-        "https://scdn.line-apps.com/n/channel_devcenter/img/fx/review_gray_star_28.png"
+        Settings.gray_star
       end
 
     rates << {
